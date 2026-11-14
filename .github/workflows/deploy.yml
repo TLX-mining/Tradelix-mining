@@ -1,3 +1,4 @@
+
 name: Deploy Tradelix Mining to GitHub Pages
 
 on:
@@ -113,6 +114,9 @@ jobs:
 
       - name: Build Website
         run: npm run build -- --base=/Tradelix-mining/
+
+      - name: Include Mining Deployment Page
+        run: cp deploy.html dist/deploy.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

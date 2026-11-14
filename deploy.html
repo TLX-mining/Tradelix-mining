@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tradelix Mining Deployment</title>
+<style>
+body{background:#080d18;color:white;font-family:Arial;padding:20px}
+main{max-width:700px;margin:auto}
+.card{background:#111a2b;padding:20px;border-radius:14px}
+h2{color:#e9bd55}
+input,button{box-sizing:border-box;width:100%;padding:14px;margin:10px 0;border-radius:8px}
+input{background:#080d18;color:white;border:1px solid #41516d}
+button{background:#d9aa3f;color:#111;font-weight:bold;border:0}
+#status{white-space:pre-wrap;overflow-wrap:anywhere;color:#f4d98c}
+</style>
+</head>
+<body>
+<main>
+<h2>TRADELIX AI MINING DEPLOYMENT</h2>
+<div class="card">
+<p>BNB Smart Chain — Daily Rate: 1% — Maximum Rewards: 30,000,000 TLX</p>
+
+<label>TLX Token Address</label>
+<input id="token" value="0x252345178fb4E2b5724B96756c47Da89b618CD30">
+
+<label>Sale Contract Address</label>
+<input id="sale" value="0x95969e4888A0afC7bb54c30F020a353407B35e0F">
+
+<button id="connect">1. CONNECT TOKENPOCKET</button>
+<button id="deploy" disabled>2. COMPILE & DEPLOY MINING</button>
+<div id="status">Not connected</div>
+</div>
+</main>
+
+<script type="module">
+import { ethers } from "https://esm.sh/ethers@6.13.5";
+import solc from "https://esm.sh/solc@0.8.20";
+
+const source = `
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+interface IERC20TLX {
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address to, uint256 amount) external returns (bool);
+}
+
+interface ITradelixSaleData {
+    function firstPurchaseTokens(address user) external view returns (uint256);
+    function firstPurchaseTime(address user) external view returns (uint256);
+}
+
+contract TradelixMining {
+    address public owner;
+    IERC20TLX public immutable tlxToken;
+    ITradelixSaleData public immutable saleContract;
+
+    mapping(address => uint256) public lastClaimTime;
+
+    uint256 public constant DAILY_RATE = 100;
+    uint256 public constant RATE_DENOMINATOR = 10000;
+    uint256 public constant DAY = 1 days;
+    uint256 public constant MAX_REWARDS = 30_000_000 * 10**18;
+
+    uint256 public totalRewardsPaid;
+
+    event MiningClaimed(address indexed user, uint256 amount, uint256 timestamp);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    constructor(address tokenAddress, address saleAddress) {
+        require(tokenAddress != address(0), "Invalid token");
+        require(saleAddress != address(0), "Invalid sale");
+        owner = msg.sender;
+        tlxToken = IERC20TLX(tokenAddress);
+        saleContract = ITradelixSaleData(saleAddress);
+    }
+
+    function claim() external {
+        uint256 baseAmount = saleContract.firstPurchaseTokens(msg.sender);
+        uint256 purchaseTime = saleContract.firstPurchaseTime(msg.sender);
+
+        require(baseAmount > 0, "No eligible first purchase");
+        require(purchaseTime > 0, "Purchase not recorded");
+
+        uint256 previousClaim = lastClaimTime[msg.sender];
+        if (previousClaim == 0) previousClaim = purchaseTime;
+
+        require(block.timestamp >= previousClaim + DAY, "Wait 24 hours");
+
+        uint256 elapsed = block.timestamp - previousClaim;
+        uint256 reward =
+            (baseAmount * DAILY_RATE * elapsed) /
+            (RATE_DENOMINATOR * DAY);
+
+        require(reward > 0, "Reward too small");
+        require(totalRewardsPaid + reward <= MAX_REWARDS, "Mining allocation exhausted");
+        require(tlxToken.balanceOf(address(this)) >= reward, "Mining reserve insufficient");
+
+        lastClaimTime[msg.sender] = block.timestamp;
+        totalRewardsPaid += reward;
+
+        require(tlxToken.transfer(msg.sender, reward), "TLX transfer failed");
+
+        emit MiningClaimed(msg.sender, reward, block.timestamp);
+    }
+
+    function miningReserveBalance() external view returns (uint256) {
+        return tlxToken.balanceOf(address(this));
+    }
+
+    function remainingRewards() external view returns (uint256) {
+        return MAX_REWARDS - totalRewardsPaid;
+    }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "Invalid owner");
+        owner = newOwner;
+    }
+}
+`;
+
+const status = document.getElementById("status");
+let provider, signer;
+
+document.getElementById("connect").onclick = async () => {
+    try {
+        if (!window.ethereum)
+            throw new Error("Open this page in TokenPocket DApp browser.");
+
+        provider = new ethers.BrowserProvider(window.ethereum);
+        await provider.send("eth_requestAccounts", []);
+        await provider.send("wallet_switchEthereumChain", [
+            { chainId: "0x38" }
+        ]);
+
+        signer = await provider.getSigner();
+        status.textContent = "Connected: " + await signer.getAddress();
+        document.getElementById("deploy").disabled = false;
+    } catch (e) {
+        status.textContent = "Error: " + e.message;
+    }
+};
+
+document.getElementById("deploy").onclick = async () => {
+    try {
+        const token = document.getElementById("token").value.trim();
+        const sale = document.getElementById("sale").value.trim();
+
+        if (!ethers.isAddress(token) || !ethers.isAddress(sale))
+            throw new Error("Invalid contract address.");
+
+        status.textContent = "Compiling contract...";
+
+        const input = {
+            language: "Solidity",
+            sources: {
+                "TradelixMining.sol": { content: source }
+            },
+            settings: {
+                optimizer: { enabled: true, runs: 200 },
+                outputSelection: {
+                    "*": { "*": ["abi", "evm.bytecode.object"] }
+                }
+            }
+        };
+
+        const output = JSON.parse(solc.compile(JSON.stringify(input)));
+        const errors = (output.errors || []).filter(
+            e => e.severity === "error"
+        );
+
+        if (errors.length)
+            throw new Error(errors.map(e => e.formattedMessage).join("\n"));
+
+        const contractData =
+            output.contracts["TradelixMining.sol"].TradelixMining;
+
+        const factory = new ethers.ContractFactory(
+            contractData.abi,
+            "0x" + contractData.evm.bytecode.object,
+            signer
+        );
+
+        status.textContent = "Confirm deployment in TokenPocket...";
+
+        const contract = await factory.deploy(token, sale);
+
+        status.textContent =
+            "Transaction: " + contract.deploymentTransaction().hash +
+            "\nWaiting for confirmation...";
+
+        await contract.waitForDeployment();
+
+        status.textContent =
+            "DEPLOYED SUCCESSFULLY\nContract: " +
+            await contract.getAddress() +
+            "\nNext step: fund the contract with 30,000,000 TLX.";
+    } catch (e) {
+        status.textContent = "Stopped: " + e.message;
+    }
+};
+</script>
+</body>
+</html>

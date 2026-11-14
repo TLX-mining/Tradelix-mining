@@ -12,8 +12,8 @@ main{max-width:700px;margin:auto}
 h2{color:#e9bd55}
 input,button{box-sizing:border-box;width:100%;padding:14px;margin:10px 0;border-radius:8px}
 input{background:#080d18;color:white;border:1px solid #41516d}
-button{background:#d9aa3f;color:#111;font-weight:bold;border:0}
-button:disabled{opacity:.5}
+button{background:#d9aa3f;color:#111;font-weight:bold;border:0;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
 #status{white-space:pre-wrap;overflow-wrap:anywhere;color:#f4d98c}
 </style>
 </head>
@@ -35,9 +35,12 @@ button:disabled{opacity:.5}
 </div>
 </main>
 
-<script type="module">
-import { ethers } from "https://esm.sh/ethers@6.13.5";
-import solc from "https://esm.sh/solc@0.8.20";
+<script>
+const status = document.getElementById("status");
+const connectButton = document.getElementById("connect");
+const deployButton = document.getElementById("deploy");
+
+let connectedAccount = null;
 
 const source = `
 // SPDX-License-Identifier: MIT
@@ -178,82 +181,196 @@ contract TradelixMining {
 }
 `;
 
-const status = document.getElementById("status");
-let signer;
+function showError(error) {
+    return error?.shortMessage || error?.reason || error?.message || String(error);
+}
 
-document.getElementById("connect").onclick = async () => {
+async function switchToBNBChain() {
+    await window.ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: "0x38" }]
+    });
+
+    const chainId = await window.ethereum.request({
+        method: "eth_chainId"
+    });
+
+    if (chainId.toLowerCase() !== "0x38") {
+        throw new Error("Please select BNB Smart Chain.");
+    }
+}
+
+connectButton.addEventListener("click", async () => {
+    connectButton.disabled = true;
+    deployButton.disabled = true;
+
     try {
-        if (!window.ethereum)
-            throw new Error("Open this page in TokenPocket DApp browser.");
+        if (!window.ethereum) {
+            throw new Error("Open this page inside TokenPocket DApp browser.");
+        }
 
-        await window.ethereum.request({method:"eth_requestAccounts"});
+        status.textContent = "Connecting to TokenPocket...";
 
-        await window.ethereum.request({
-            method:"wallet_switchEthereumChain",
-            params:[{chainId:"0x38"}]
+        const accounts = await window.ethereum.request({
+            method: "eth_requestAccounts"
         });
 
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        signer = await provider.getSigner();
+        if (!accounts || accounts.length === 0) {
+            throw new Error("No wallet account selected.");
+        }
 
-        const network = await provider.getNetwork();
-        if (network.chainId !== 56n)
-            throw new Error("Select BNB Smart Chain.");
+        await switchToBNBChain();
+
+        const currentAccounts = await window.ethereum.request({
+            method: "eth_accounts"
+        });
+
+        if (!currentAccounts || currentAccounts.length === 0) {
+            throw new Error("Wallet account is not available.");
+        }
+
+        connectedAccount = currentAccounts[0];
 
         status.textContent =
-            "Connected: " + await signer.getAddress() +
+            "Connected: " + connectedAccount +
             "\nBNB Smart Chain connected.";
 
-        document.getElementById("deploy").disabled = false;
-    } catch(e) {
-        status.textContent = "Error: " + (e.shortMessage || e.message);
-    }
-};
+        deployButton.disabled = false;
 
-document.getElementById("deploy").onclick = async () => {
-    const button = document.getElementById("deploy");
-    button.disabled = true;
+    } catch (error) {
+        connectedAccount = null;
+        status.textContent = "Connection error: " + showError(error);
+    } finally {
+        connectButton.disabled = false;
+    }
+});
+
+if (window.ethereum && window.ethereum.on) {
+    window.ethereum.on("accountsChanged", (accounts) => {
+        connectedAccount = null;
+        deployButton.disabled = true;
+
+        if (accounts && accounts.length > 0) {
+            status.textContent =
+                "Wallet account changed.\nPlease connect again.";
+        } else {
+            status.textContent = "Wallet disconnected.";
+        }
+    });
+
+    window.ethereum.on("chainChanged", () => {
+        connectedAccount = null;
+        deployButton.disabled = true;
+        status.textContent =
+            "Network changed.\nPlease connect again to BNB Smart Chain.";
+    });
+}
+
+deployButton.addEventListener("click", async () => {
+    deployButton.disabled = true;
 
     try {
-        if (!signer) throw new Error("Connect TokenPocket first.");
+        if (!window.ethereum) {
+            throw new Error("TokenPocket wallet not detected.");
+        }
+
+        if (!connectedAccount) {
+            throw new Error("Connect TokenPocket first.");
+        }
 
         const token = document.getElementById("token").value.trim();
         const sale = document.getElementById("sale").value.trim();
 
-        if (!ethers.isAddress(token) || !ethers.isAddress(sale))
+        status.textContent = "Checking wallet and network...";
+
+        const accounts = await window.ethereum.request({
+            method: "eth_accounts"
+        });
+
+        if (!accounts || accounts.length === 0 ||
+            accounts[0].toLowerCase() !== connectedAccount.toLowerCase()) {
+            throw new Error("Wallet account changed. Connect again.");
+        }
+
+        const chainId = await window.ethereum.request({
+            method: "eth_chainId"
+        });
+
+        if (chainId.toLowerCase() !== "0x38") {
+            throw new Error("Wrong network. Select BNB Smart Chain.");
+        }
+
+        status.textContent = "Loading deployment libraries...";
+
+        const ethersModule = await import(
+            "https://esm.sh/ethers@6.13.5"
+        );
+
+        const solcModule = await import(
+            "https://esm.sh/solc@0.8.20"
+        );
+
+        const ethers = ethersModule.ethers || ethersModule;
+        const solc = solcModule.default || solcModule;
+
+        if (!ethers || !solc || typeof solc.compile !== "function") {
+            throw new Error("Could not load deployment libraries.");
+        }
+
+        if (!ethers.isAddress(token) || !ethers.isAddress(sale)) {
             throw new Error("Invalid contract address.");
+        }
 
         const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+
+        const signerAddress = await signer.getAddress();
+
+        if (signerAddress.toLowerCase() !== connectedAccount.toLowerCase()) {
+            throw new Error("Wallet account changed. Connect again.");
+        }
+
         const network = await provider.getNetwork();
 
-        if (network.chainId !== 56n)
+        if (network.chainId !== 56n) {
             throw new Error("Wrong network.");
+        }
 
         status.textContent = "Compiling mining contract...";
 
         const input = {
-            language:"Solidity",
-            sources:{
-                "TradelixMining.sol":{content:source}
+            language: "Solidity",
+            sources: {
+                "TradelixMining.sol": { content: source }
             },
-            settings:{
-                optimizer:{enabled:true,runs:200},
-                outputSelection:{
-                    "*":{"*":["abi","evm.bytecode.object"]}
+            settings: {
+                optimizer: { enabled: true, runs: 200 },
+                outputSelection: {
+                    "*": {
+                        "*": ["abi", "evm.bytecode.object"]
+                    }
                 }
             }
         };
 
         const output = JSON.parse(solc.compile(JSON.stringify(input)));
+
         const errors = (output.errors || []).filter(
-            e => e.severity === "error"
+            error => error.severity === "error"
         );
 
-        if (errors.length)
-            throw new Error(errors.map(e => e.formattedMessage).join("\n"));
+        if (errors.length) {
+            throw new Error(
+                errors.map(error => error.formattedMessage).join("\n")
+            );
+        }
 
         const data =
             output.contracts["TradelixMining.sol"].TradelixMining;
+
+        if (!data.evm.bytecode.object) {
+            throw new Error("Contract bytecode was not generated.");
+        }
 
         const factory = new ethers.ContractFactory(
             data.abi,
@@ -262,28 +379,35 @@ document.getElementById("deploy").onclick = async () => {
         );
 
         status.textContent =
-            "Confirm deployment in TokenPocket. Check the addresses.";
+            "Review the deployment details and confirm only if correct." +
+            "\nToken: " + token +
+            "\nSale: " + sale +
+            "\nNetwork: BNB Smart Chain";
 
-        const contract = await factory.deploy(token,sale);
+        const contract = await factory.deploy(token, sale);
+
         const tx = contract.deploymentTransaction();
 
         status.textContent =
-            "Transaction: " + tx.hash +
+            "Deployment transaction submitted:\n" + tx.hash +
             "\nWaiting for confirmation...";
 
         await contract.waitForDeployment();
 
-        status.textContent =
-            "DEPLOYED SUCCESSFULLY\nContract: " +
-            await contract.getAddress() +
-            "\nTransaction: " + tx.hash +
-            "\nThe contract is not funded yet. Do not transfer TLX until its address and settings are verified.";
+        const deployedAddress = await contract.getAddress();
 
-    } catch(e) {
-        status.textContent = "Stopped: " + (e.shortMessage || e.message);
-        button.disabled = false;
+        status.textContent =
+            "DEPLOYED SUCCESSFULLY\n" +
+            "Contract: " + deployedAddress +
+            "\nTransaction: " + tx.hash +
+            "\n\nThe contract is NOT funded yet." +
+            "\nVerify the contract address and settings before transferring any TLX.";
+
+    } catch (error) {
+        status.textContent = "Stopped: " + showError(error);
+        deployButton.disabled = !connectedAccount;
     }
-};
+});
 </script>
 </body>
 </html>

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,6 +13,7 @@ h2{color:#e9bd55}
 input,button{box-sizing:border-box;width:100%;padding:14px;margin:10px 0;border-radius:8px}
 input{background:#080d18;color:white;border:1px solid #41516d}
 button{background:#d9aa3f;color:#111;font-weight:bold;border:0}
+button:disabled{opacity:.5}
 #status{white-space:pre-wrap;overflow-wrap:anywhere;color:#f4d98c}
 </style>
 </head>
@@ -28,7 +30,7 @@ button{background:#d9aa3f;color:#111;font-weight:bold;border:0}
 <input id="sale" value="0x95969e4888A0afC7bb54c30F020a353407B35e0F">
 
 <button id="connect">1. CONNECT TOKENPOCKET</button>
-<button id="deploy" disabled>2. COMPILE & DEPLOY MINING</button>
+<button id="deploy" disabled>2. COMPILE &amp; DEPLOY MINING</button>
 <div id="status">Not connected</div>
 </div>
 </main>
@@ -51,6 +53,45 @@ interface ITradelixSaleData {
     function firstPurchaseTime(address user) external view returns (uint256);
 }
 
+library FullMath {
+    function mulDiv(uint256 a,uint256 b,uint256 denominator)
+        internal pure returns (uint256 result)
+    {
+        unchecked {
+            uint256 prod0;
+            uint256 prod1;
+            assembly {
+                let mm := mulmod(a,b,not(0))
+                prod0 := mul(a,b)
+                prod1 := sub(sub(mm,prod0),lt(mm,prod0))
+            }
+            if (prod1 == 0) return prod0 / denominator;
+            require(denominator > prod1,"Math overflow");
+            uint256 remainder;
+            assembly {
+                remainder := mulmod(a,b,denominator)
+                prod1 := sub(prod1,gt(remainder,prod0))
+                prod0 := sub(prod0,remainder)
+            }
+            uint256 twos = denominator & (~denominator + 1);
+            assembly {
+                denominator := div(denominator,twos)
+                prod0 := div(prod0,twos)
+                twos := add(div(sub(0,twos),twos),1)
+            }
+            prod0 |= prod1 * twos;
+            uint256 inverse = (3 * denominator) ^ 2;
+            inverse *= 2 - denominator * inverse;
+            inverse *= 2 - denominator * inverse;
+            inverse *= 2 - denominator * inverse;
+            inverse *= 2 - denominator * inverse;
+            inverse *= 2 - denominator * inverse;
+            inverse *= 2 - denominator * inverse;
+            result = prod0 * inverse;
+        }
+    }
+}
+
 contract TradelixMining {
     address public owner;
     IERC20TLX public immutable tlxToken;
@@ -64,49 +105,61 @@ contract TradelixMining {
     uint256 public constant MAX_REWARDS = 30_000_000 * 10**18;
 
     uint256 public totalRewardsPaid;
+    uint256 private locked = 1;
 
-    event MiningClaimed(address indexed user, uint256 amount, uint256 timestamp);
+    event MiningClaimed(address indexed user,uint256 amount,uint256 timestamp);
+    event OwnershipTransferred(address indexed previousOwner,address indexed newOwner);
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
+        require(msg.sender == owner,"Not owner");
         _;
     }
 
-    constructor(address tokenAddress, address saleAddress) {
-        require(tokenAddress != address(0), "Invalid token");
-        require(saleAddress != address(0), "Invalid sale");
+    modifier nonReentrant() {
+        require(locked == 1,"Reentrant call");
+        locked = 2;
+        _;
+        locked = 1;
+    }
+
+    constructor(address tokenAddress,address saleAddress) {
+        require(tokenAddress != address(0),"Invalid token");
+        require(saleAddress != address(0),"Invalid sale");
         owner = msg.sender;
         tlxToken = IERC20TLX(tokenAddress);
         saleContract = ITradelixSaleData(saleAddress);
+        emit OwnershipTransferred(address(0),msg.sender);
     }
 
-    function claim() external {
+    function claim() external nonReentrant {
         uint256 baseAmount = saleContract.firstPurchaseTokens(msg.sender);
         uint256 purchaseTime = saleContract.firstPurchaseTime(msg.sender);
 
-        require(baseAmount > 0, "No eligible first purchase");
-        require(purchaseTime > 0, "Purchase not recorded");
+        require(baseAmount > 0,"No eligible first purchase");
+        require(purchaseTime > 0,"Purchase not recorded");
 
         uint256 previousClaim = lastClaimTime[msg.sender];
         if (previousClaim == 0) previousClaim = purchaseTime;
 
-        require(block.timestamp >= previousClaim + DAY, "Wait 24 hours");
+        require(block.timestamp >= previousClaim + DAY,"Wait 24 hours");
 
         uint256 elapsed = block.timestamp - previousClaim;
-        uint256 reward =
-            (baseAmount * DAILY_RATE * elapsed) /
-            (RATE_DENOMINATOR * DAY);
+        uint256 reward = FullMath.mulDiv(
+            baseAmount,
+            DAILY_RATE * elapsed,
+            RATE_DENOMINATOR * DAY
+        );
 
-        require(reward > 0, "Reward too small");
-        require(totalRewardsPaid + reward <= MAX_REWARDS, "Mining allocation exhausted");
-        require(tlxToken.balanceOf(address(this)) >= reward, "Mining reserve insufficient");
+        require(reward > 0,"Reward too small");
+        require(totalRewardsPaid + reward <= MAX_REWARDS,"Mining allocation exhausted");
+        require(tlxToken.balanceOf(address(this)) >= reward,"Mining reserve insufficient");
 
         lastClaimTime[msg.sender] = block.timestamp;
         totalRewardsPaid += reward;
 
-        require(tlxToken.transfer(msg.sender, reward), "TLX transfer failed");
+        require(tlxToken.transfer(msg.sender,reward),"TLX transfer failed");
 
-        emit MiningClaimed(msg.sender, reward, block.timestamp);
+        emit MiningClaimed(msg.sender,reward,block.timestamp);
     }
 
     function miningReserveBalance() external view returns (uint256) {
@@ -118,53 +171,75 @@ contract TradelixMining {
     }
 
     function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "Invalid owner");
+        require(newOwner != address(0),"Invalid owner");
+        emit OwnershipTransferred(owner,newOwner);
         owner = newOwner;
     }
 }
 `;
 
 const status = document.getElementById("status");
-let provider, signer;
+let signer;
 
 document.getElementById("connect").onclick = async () => {
     try {
         if (!window.ethereum)
             throw new Error("Open this page in TokenPocket DApp browser.");
 
-        provider = new ethers.BrowserProvider(window.ethereum);
-        await provider.send("eth_requestAccounts", []);
-        await provider.send("wallet_switchEthereumChain", [
-            { chainId: "0x38" }
-        ]);
+        await window.ethereum.request({method:"eth_requestAccounts"});
 
+        await window.ethereum.request({
+            method:"wallet_switchEthereumChain",
+            params:[{chainId:"0x38"}]
+        });
+
+        const provider = new ethers.BrowserProvider(window.ethereum);
         signer = await provider.getSigner();
-        status.textContent = "Connected: " + await signer.getAddress();
+
+        const network = await provider.getNetwork();
+        if (network.chainId !== 56n)
+            throw new Error("Select BNB Smart Chain.");
+
+        status.textContent =
+            "Connected: " + await signer.getAddress() +
+            "\nBNB Smart Chain connected.";
+
         document.getElementById("deploy").disabled = false;
-    } catch (e) {
-        status.textContent = "Error: " + e.message;
+    } catch(e) {
+        status.textContent = "Error: " + (e.shortMessage || e.message);
     }
 };
 
 document.getElementById("deploy").onclick = async () => {
+    const button = document.getElementById("deploy");
+    button.disabled = true;
+
     try {
+        if (!signer) throw new Error("Connect TokenPocket first.");
+
         const token = document.getElementById("token").value.trim();
         const sale = document.getElementById("sale").value.trim();
 
         if (!ethers.isAddress(token) || !ethers.isAddress(sale))
             throw new Error("Invalid contract address.");
 
-        status.textContent = "Compiling contract...";
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const network = await provider.getNetwork();
+
+        if (network.chainId !== 56n)
+            throw new Error("Wrong network.");
+
+        status.textContent = "Compiling mining contract...";
 
         const input = {
-            language: "Solidity",
-            sources: {
-                "TradelixMining.sol": { content: source }
+            language:"Solidity",
+            sources:{
+                "TradelixMining.sol":{content:source}
             },
-            settings: {
-                optimizer: { enabled: true, runs: 200 },
-                outputSelection: {
-                    "*": { "*": ["abi", "evm.bytecode.object"] }
+            settings:{
+                optimizer:{enabled:true,runs:200},
+                outputSelection:{
+                    "*":{"*":["abi","evm.bytecode.object"]}
                 }
             }
         };
@@ -177,21 +252,23 @@ document.getElementById("deploy").onclick = async () => {
         if (errors.length)
             throw new Error(errors.map(e => e.formattedMessage).join("\n"));
 
-        const contractData =
+        const data =
             output.contracts["TradelixMining.sol"].TradelixMining;
 
         const factory = new ethers.ContractFactory(
-            contractData.abi,
-            "0x" + contractData.evm.bytecode.object,
+            data.abi,
+            "0x" + data.evm.bytecode.object,
             signer
         );
 
-        status.textContent = "Confirm deployment in TokenPocket...";
+        status.textContent =
+            "Confirm deployment in TokenPocket. Check the addresses.";
 
-        const contract = await factory.deploy(token, sale);
+        const contract = await factory.deploy(token,sale);
+        const tx = contract.deploymentTransaction();
 
         status.textContent =
-            "Transaction: " + contract.deploymentTransaction().hash +
+            "Transaction: " + tx.hash +
             "\nWaiting for confirmation...";
 
         await contract.waitForDeployment();
@@ -199,9 +276,12 @@ document.getElementById("deploy").onclick = async () => {
         status.textContent =
             "DEPLOYED SUCCESSFULLY\nContract: " +
             await contract.getAddress() +
-            "\nNext step: fund the contract with 30,000,000 TLX.";
-    } catch (e) {
-        status.textContent = "Stopped: " + e.message;
+            "\nTransaction: " + tx.hash +
+            "\nThe contract is not funded yet. Do not transfer TLX until its address and settings are verified.";
+
+    } catch(e) {
+        status.textContent = "Stopped: " + (e.shortMessage || e.message);
+        button.disabled = false;
     }
 };
 </script>

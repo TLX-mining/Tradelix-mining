@@ -301,9 +301,9 @@ async function refreshDashboard() {
         displayAmount(eligibleAmount) + ' TLX';
     }
 
-    // Daily mining reward: 1%
-    const dailyReward =
-      Number(formatUnits(eligibleAmount, 18)) * 0.01;
+    // Daily mining reward: 0.25%
+const dailyReward =
+  Number(formatUnits(eligibleAmount, 18)) * 0.0025;
 
     if (rewardElement) {
       rewardElement.textContent =

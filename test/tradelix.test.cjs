@@ -102,7 +102,7 @@ describe("Tradelix AI - Smart Contract Tests", function () {
     ).to.be.revertedWith("Wait 24 hours");
   });
 
-  it("should pay exactly 1 percent daily on the first purchase only", async function () {
+  it("should pay exactly 0.25 percent daily on the first purchase only", async function () {
     await sale.connect(buyer).buy(parse("5"));
     await sale.connect(buyer).buy(parse("10"));
 
@@ -115,14 +115,14 @@ describe("Tradelix AI - Smart Contract Tests", function () {
     await mining.connect(buyer).claim();
 
     expect(await token.balanceOf(buyer.address))
-      .to.equal(parse("150.5"));
+      .to.equal(parse("150.375"));
 
     expect(await mining.totalRewardsPaid())
-      .to.equal(parse("0.5"));
+      .to.equal(parse("0.375"));
   });
 
-  it("should expose the configured 1 percent daily rate", async function () {
-    expect(await mining.DAILY_RATE()).to.equal(100n);
+  it("should expose the configured 0.25 percent daily rate", async function () {
+    expect(await mining.DAILY_RATE()).to.equal(25n);
 
     expect(await mining.RATE_DENOMINATOR()).to.equal(10000n);
   });

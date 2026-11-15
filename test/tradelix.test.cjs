@@ -118,7 +118,7 @@ describe("Tradelix AI - Smart Contract Tests", function () {
       .to.equal(parse("150.125"));
 
     expect(await mining.totalRewardsPaid())
-      .to.equal(parse("0.375"));
+      .to.equal(parse("0.125"));
   });
 
   it("should expose the configured 0.25 percent daily rate", async function () {

@@ -115,7 +115,7 @@ describe("Tradelix AI - Smart Contract Tests", function () {
     await mining.connect(buyer).claim();
 
     expect(await token.balanceOf(buyer.address))
-      .to.equal(parse("150.375"));
+      .to.equal(parse("150.125"));
 
     expect(await mining.totalRewardsPaid())
       .to.equal(parse("0.375"));

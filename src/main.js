@@ -1,4 +1,3 @@
-
 import './style.css';
 
 import { createAppKit } from '@reown/appkit';

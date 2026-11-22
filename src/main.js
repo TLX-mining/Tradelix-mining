@@ -4,7 +4,6 @@ import './style.css';
 import { createAppKit } from '@reown/appkit';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
 import { bsc } from '@reown/appkit/networks';
-
 import {
   BrowserProvider,
   Contract,
@@ -16,17 +15,10 @@ import {
 const CHAIN_ID = 56;
 const CHAIN_HEX = '0x38';
 
-const TOKEN_ADDRESS =
-  '0x252345178fb4E2b5724B96756c47Da89b618CD30';
-
-const SALE_ADDRESS =
-  '0x95969e4888A0afC7bb54c30F020a353407B35e0F';
-
-const MINING_ADDRESS =
-  '0x4203f81841284D6248E4eE45384f2685c07e4070';
-
-const USDT_ADDRESS =
-  '0x55d398326f99059fF775485246999027B3197955';
+const TOKEN_ADDRESS = '0x252345178fb4E2b5724B96756c47Da89b618CD30';
+const SALE_ADDRESS = '0x95969e4888A0afC7bb54c30F020a353407B35e0F';
+const MINING_ADDRESS = '0x4203f81841284D6248E4eE45384f2685c07e4070';
+const USDT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955';
 
 const PROJECT_ID = 'be63be7be2e8c243abb3a982be799a67';
 
@@ -37,26 +29,6 @@ const metadata = {
   icons: []
 };
 
-const networks = [bsc];
-
-const wagmiAdapter = new WagmiAdapter({
-  projectId: PROJECT_ID,
-  networks
-});
-
-const modal = createAppKit({
-  adapters: [wagmiAdapter],
-  networks,
-  projectId: PROJECT_ID,
-  metadata,
-  features: {
-    analytics: true,
-    email: false,
-    socials: []
-  }
-});
-
-// Contract interfaces
 const tokenABI = [
   'function balanceOf(address) view returns (uint256)'
 ];
@@ -84,39 +56,32 @@ const miningABI = [
 const connectButton = document.getElementById('connectButton');
 const walletElement = document.getElementById('wallet');
 const statusElement = document.getElementById('status');
-
 const buyButton = document.getElementById('buyButton');
 const amountInput = document.getElementById('purchaseAmount');
-
 const balanceElement = document.getElementById('balance');
 const eligibleElement = document.getElementById('eligible');
 const rewardElement = document.getElementById('reward');
-
 const claimButton = document.querySelector('.claim');
-const miningStatusElement =
-  document.querySelector('.card:nth-of-type(4) .status');
+const miningStatusElement = document.querySelector('.card:nth-of-type(4) .status');
 
 let walletProvider = null;
 let walletAddress = null;
 let busy = false;
 let refreshRunning = false;
 let listeningProvider = null;
+let modal = null;
 
 // Messages
 function setStatus(message) {
-  if (statusElement) {
-    statusElement.textContent = message;
-  }
+  if (statusElement) statusElement.textContent = message;
 }
 
 function setMiningStatus(message) {
-  if (miningStatusElement) {
-    miningStatusElement.textContent = message;
-  }
+  if (miningStatusElement) miningStatusElement.textContent = message;
 }
 
 function showError(error) {
-  console.error(error);
+  console.error('TLX Error:', error);
 
   const message =
     error?.shortMessage ||
@@ -133,67 +98,131 @@ function shorten(address) {
 }
 
 function displayAmount(value) {
-  return Number(formatUnits(value, 18)).toLocaleString(
-    'en-US',
-    { maximumFractionDigits: 6 }
-  );
+  return Number(formatUnits(value, 18)).toLocaleString('en-US', {
+    maximumFractionDigits: 6
+  });
 }
 
-// Reset displayed wallet information
+// Find the injected wallet provider
+function getInjectedProvider() {
+  if (!window.ethereum) return null;
+
+  const providers = window.ethereum.providers;
+
+  if (Array.isArray(providers)) {
+    return providers.find(
+      provider =>
+        provider.isTokenPocket ||
+        provider.isTP ||
+        provider.isMetaMask
+    ) || providers[0];
+  }
+
+  return window.ethereum;
+}
+
+// Attach wallet event listeners
+function attachProviderListeners(provider) {
+  if (
+    !provider ||
+    typeof provider.on !== 'function' ||
+    listeningProvider === provider
+  ) {
+    return;
+  }
+
+  listeningProvider = provider;
+
+  provider.on('accountsChanged', handleAccountsChanged);
+  provider.on('chainChanged', handleChainChanged);
+}
+
+// Reset wallet display
 function resetWalletDisplay() {
   walletAddress = null;
 
-  if (walletElement) {
-    walletElement.textContent = 'Not connected';
-  }
-
-  if (connectButton) {
-    connectButton.textContent = 'CONNECT WALLET';
-  }
+  if (walletElement) walletElement.textContent = 'Not connected';
+  if (connectButton) connectButton.textContent = 'CONNECT WALLET';
 
   if (balanceElement) balanceElement.textContent = '-- TLX';
   if (eligibleElement) eligibleElement.textContent = '-- TLX';
   if (rewardElement) rewardElement.textContent = '-- TLX';
 
-  if (claimButton) {
-    claimButton.disabled = true;
-  }
+  if (claimButton) claimButton.disabled = true;
 
   setStatus('Please connect your wallet');
   setMiningStatus('Connect your wallet to view mining status.');
 }
 
-// Get the currently active wallet
+// Connect directly to TokenPocket or another injected wallet
+async function connectInjectedWallet() {
+  const provider = getInjectedProvider();
+
+  if (!provider) {
+    return false;
+  }
+
+  walletProvider = provider;
+  setStatus('Connecting to your wallet...');
+
+  const accounts = await provider.request({
+    method: 'eth_requestAccounts'
+  });
+
+  if (!accounts || !accounts[0]) {
+    throw new Error('No wallet account was returned.');
+  }
+
+  walletAddress = accounts[0];
+
+  if (walletElement) {
+    walletElement.textContent = shorten(walletAddress);
+  }
+
+  if (connectButton) {
+    connectButton.textContent = 'WALLET CONNECTED';
+  }
+
+  attachProviderListeners(provider);
+
+  setStatus('Wallet connected. Checking network...');
+
+  await getWallet();
+
+  setStatus('Wallet connected successfully.');
+  await refreshDashboard();
+
+  return true;
+}
+
+// Get active wallet and verify network
 async function getWallet() {
   if (!walletProvider) {
     throw new Error('Please connect your wallet first.');
   }
 
-  const accounts = await walletProvider.request({
+  let accounts = await walletProvider.request({
     method: 'eth_accounts'
   });
 
-  const activeAddress = accounts?.[0];
-
-  if (!activeAddress) {
-    throw new Error('No active wallet account found.');
+  if (!accounts || !accounts[0]) {
+    throw new Error('Please connect your wallet first.');
   }
 
-  if (
-    !walletAddress ||
-    walletAddress.toLowerCase() !== activeAddress.toLowerCase()
-  ) {
-    walletAddress = activeAddress;
+  const activeAddress = accounts[0];
 
-    if (walletElement) {
-      walletElement.textContent = shorten(activeAddress);
-    }
+  walletAddress = activeAddress;
+
+  if (walletElement) {
+    walletElement.textContent = shorten(activeAddress);
   }
 
   let provider = new BrowserProvider(walletProvider, 'any');
   let network = await provider.getNetwork();
 
   if (Number(network.chainId) !== CHAIN_ID) {
+    setStatus('Switching to BNB Smart Chain...');
+
     await walletProvider.request({
       method: 'wallet_switchEthereumChain',
       params: [{ chainId: CHAIN_HEX }]
@@ -210,9 +239,7 @@ async function getWallet() {
   const signer = await provider.getSigner();
   const signerAddress = await signer.getAddress();
 
-  if (
-    signerAddress.toLowerCase() !== activeAddress.toLowerCase()
-  ) {
+  if (signerAddress.toLowerCase() !== activeAddress.toLowerCase()) {
     throw new Error('Wallet account changed. Please reconnect.');
   }
 
@@ -234,39 +261,22 @@ function setBusy(value) {
 
   if (claimButton) {
     claimButton.disabled = value;
-    claimButton.textContent =
-      value ? 'PLEASE WAIT...' : 'CLAIM MINING';
+    claimButton.textContent = value ? 'PLEASE WAIT...' : 'CLAIM MINING';
   }
 }
 
-// Refresh wallet balances and mining information
+// Refresh balances and mining information
 async function refreshDashboard() {
-  if (!walletProvider || !walletAddress || refreshRunning) {
-    return;
-  }
+  if (!walletProvider || !walletAddress || refreshRunning) return;
 
   refreshRunning = true;
 
   try {
     const { provider, address } = await getWallet();
 
-    const token = new Contract(
-      TOKEN_ADDRESS,
-      tokenABI,
-      provider
-    );
-
-    const sale = new Contract(
-      SALE_ADDRESS,
-      saleABI,
-      provider
-    );
-
-    const mining = new Contract(
-      MINING_ADDRESS,
-      miningABI,
-      provider
-    );
+    const token = new Contract(TOKEN_ADDRESS, tokenABI, provider);
+    const sale = new Contract(SALE_ADDRESS, saleABI, provider);
+    const mining = new Contract(MINING_ADDRESS, miningABI, provider);
 
     const [
       tokenBalance,
@@ -287,34 +297,26 @@ async function refreshDashboard() {
     if (
       !walletAddress ||
       walletAddress.toLowerCase() !== address.toLowerCase()
-    ) {
-      return;
-    }
+    ) return;
 
     if (balanceElement) {
-      balanceElement.textContent =
-        displayAmount(tokenBalance) + ' TLX';
+      balanceElement.textContent = displayAmount(tokenBalance) + ' TLX';
     }
 
     if (eligibleElement) {
-      eligibleElement.textContent =
-        displayAmount(eligibleAmount) + ' TLX';
+      eligibleElement.textContent = displayAmount(eligibleAmount) + ' TLX';
     }
 
-    // Daily mining reward: 0.25%
-const dailyReward =
-  Number(formatUnits(eligibleAmount, 18)) * 0.0025;
+    const dailyReward =
+      Number(formatUnits(eligibleAmount, 18)) * 0.0025;
 
     if (rewardElement) {
-      rewardElement.textContent =
-        dailyReward.toFixed(6) + ' TLX';
+      rewardElement.textContent = dailyReward.toFixed(6) + ' TLX';
     }
 
     if (claimButton) {
       const previousTime =
-        Number(lastClaim) > 0
-          ? Number(lastClaim)
-          : Number(purchaseTime);
+        Number(lastClaim) > 0 ? Number(lastClaim) : Number(purchaseTime);
 
       const now = Math.floor(Date.now() / 1000);
 
@@ -335,22 +337,15 @@ const dailyReward =
       } else if (ready) {
         setMiningStatus('Mining reward is ready to claim.');
       } else {
-        const remaining = Math.max(
-          0,
-          previousTime + 86400 - now
-        );
-
+        const remaining = Math.max(0, previousTime + 86400 - now);
         const hours = Math.floor(remaining / 3600);
         const minutes = Math.floor((remaining % 3600) / 60);
 
-        setMiningStatus(
-          `Next claim available in ${hours}h ${minutes}m`
-        );
+        setMiningStatus(`Next claim available in ${hours}h ${minutes}m`);
       }
     }
 
     setStatus('Wallet connected successfully.');
-
   } catch (error) {
     showError(error);
   } finally {
@@ -358,33 +353,7 @@ const dailyReward =
   }
 }
 
-// Connect wallet
-connectButton?.addEventListener('click', () => {
-  modal.open();
-});
-
-// Receive connected wallet information
-modal.subscribeAccount((account) => {
-  if (account.isConnected && account.address) {
-    walletAddress = account.address;
-
-    if (walletElement) {
-      walletElement.textContent = shorten(account.address);
-    }
-
-    if (connectButton) {
-      connectButton.textContent = 'WALLET CONNECTED';
-    }
-
-    setStatus('Wallet connected successfully.');
-    refreshDashboard();
-
-  } else {
-    resetWalletDisplay();
-  }
-});
-
-// Listen for direct MetaMask account changes
+// Handle account changes
 function handleAccountsChanged(accounts) {
   const nextAddress = accounts?.[0];
 
@@ -403,40 +372,32 @@ function handleAccountsChanged(accounts) {
     connectButton.textContent = 'WALLET CONNECTED';
   }
 
+  setStatus('Wallet account changed.');
   refreshDashboard();
 }
 
-// Listen for network changes
+// Handle network changes
 function handleChainChanged() {
+  setStatus('Network changed. Updating dashboard...');
   refreshDashboard();
 }
 
-// Attach provider event listeners
-function attachProviderListeners(provider) {
-  if (
-    !provider ||
-    typeof provider.on !== 'function' ||
-    listeningProvider === provider
-  ) {
-    return;
-  }
+// Register button events immediately
+connectButton?.addEventListener('click', async () => {
+  if (busy) return;
 
-  listeningProvider = provider;
+  try {
+    const connected = await connectInjectedWallet();
 
-  provider.on('accountsChanged', handleAccountsChanged);
-  provider.on('chainChanged', handleChainChanged);
-}
-
-// Receive wallet provider
-modal.subscribeProviders((providers) => {
-  walletProvider = providers?.eip155 || null;
-
-  if (walletProvider) {
-    attachProviderListeners(walletProvider);
-
-    if (walletAddress) {
-      refreshDashboard();
+    if (!connected) {
+      if (modal) {
+        modal.open();
+      } else {
+        setStatus('No compatible wallet detected. Open this website inside TokenPocket.');
+      }
     }
+  } catch (error) {
+    showError(error);
   }
 });
 
@@ -466,30 +427,15 @@ buyButton?.addEventListener('click', async () => {
 
     const amount = parseUnits(amountText, 18);
 
-    const usdt = new Contract(
-      USDT_ADDRESS,
-      usdtABI,
-      signer
-    );
+    const usdt = new Contract(USDT_ADDRESS, usdtABI, signer);
+    const sale = new Contract(SALE_ADDRESS, saleABI, signer);
 
-    const sale = new Contract(
-      SALE_ADDRESS,
-      saleABI,
-      signer
-    );
-
-    const allowance = await usdt.allowance(
-      address,
-      SALE_ADDRESS
-    );
+    const allowance = await usdt.allowance(address, SALE_ADDRESS);
 
     if (allowance < amount) {
       setStatus('Please approve USDT spending...');
 
-      const approval = await usdt.approve(
-        SALE_ADDRESS,
-        amount
-      );
+      const approval = await usdt.approve(SALE_ADDRESS, amount);
 
       setStatus('Waiting for USDT approval...');
       await approval.wait();
@@ -500,17 +446,13 @@ buyButton?.addEventListener('click', async () => {
     const transaction = await sale.buy(amount);
 
     setStatus('Purchase submitted. Waiting for confirmation...');
-
     await transaction.wait();
 
     setStatus('Purchase completed successfully.');
 
-    if (amountInput) {
-      amountInput.value = '';
-    }
+    if (amountInput) amountInput.value = '';
 
     await refreshDashboard();
-
   } catch (error) {
     showError(error);
   } finally {
@@ -529,11 +471,7 @@ claimButton?.addEventListener('click', async () => {
 
     const { signer } = await getWallet();
 
-    const mining = new Contract(
-      MINING_ADDRESS,
-      miningABI,
-      signer
-    );
+    const mining = new Contract(MINING_ADDRESS, miningABI, signer);
 
     const transaction = await mining.claim();
 
@@ -544,7 +482,6 @@ claimButton?.addEventListener('click', async () => {
     setMiningStatus('Mining reward claimed successfully.');
 
     await refreshDashboard();
-
   } catch (error) {
     showError(error);
   } finally {
@@ -553,12 +490,99 @@ claimButton?.addEventListener('click', async () => {
   }
 });
 
-// Initial state
-if (claimButton) {
-  claimButton.disabled = true;
+// Initialize Reown as a fallback.
+// A Reown initialization error must not disable the direct wallet connection.
+try {
+  const networks = [bsc];
+
+  const wagmiAdapter = new WagmiAdapter({
+    projectId: PROJECT_ID,
+    networks
+  });
+
+  modal = createAppKit({
+    adapters: [wagmiAdapter],
+    networks,
+    projectId: PROJECT_ID,
+    metadata,
+    features: {
+      analytics: true,
+      email: false,
+      socials: []
+    }
+  });
+
+  modal.subscribeAccount(account => {
+    if (account?.isConnected && account.address) {
+      walletAddress = account.address;
+
+      if (walletElement) {
+        walletElement.textContent = shorten(account.address);
+      }
+
+      if (connectButton) {
+        connectButton.textContent = 'WALLET CONNECTED';
+      }
+
+      setStatus('Wallet connected successfully.');
+      refreshDashboard();
+    } else if (!walletProvider) {
+      resetWalletDisplay();
+    }
+  });
+
+  modal.subscribeProviders(providers => {
+    if (!walletProvider && providers?.eip155) {
+      walletProvider = providers.eip155;
+      attachProviderListeners(walletProvider);
+
+      if (walletAddress) refreshDashboard();
+    }
+  });
+} catch (error) {
+  console.error('Reown initialization failed:', error);
+  setStatus('Direct wallet connection is available.');
 }
 
+// Detect an already authorized injected wallet
+async function detectExistingWallet() {
+  const provider = getInjectedProvider();
+
+  if (!provider) return;
+
+  walletProvider = provider;
+  attachProviderListeners(provider);
+
+  try {
+    const accounts = await provider.request({
+      method: 'eth_accounts'
+    });
+
+    if (accounts?.[0]) {
+      walletAddress = accounts[0];
+
+      if (walletElement) {
+        walletElement.textContent = shorten(walletAddress);
+      }
+
+      if (connectButton) {
+        connectButton.textContent = 'WALLET CONNECTED';
+      }
+
+      setStatus('Wallet detected. Loading account...');
+      await refreshDashboard();
+    }
+  } catch (error) {
+    console.error('Wallet detection:', error);
+  }
+}
+
+// Initial state
+if (claimButton) claimButton.disabled = true;
+
 setMiningStatus('Connect your wallet to view mining status.');
+
+detectExistingWallet();
 
 // Refresh dashboard periodically
 setInterval(() => {

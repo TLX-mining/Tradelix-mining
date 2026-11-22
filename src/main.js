@@ -1,3 +1,4 @@
+
 import './style.css';
 
 import { createAppKit } from '@reown/appkit';
@@ -24,7 +25,7 @@ const PROJECT_ID = 'be63be7be2e8c243abb3a982be799a67';
 const metadata = {
   name: 'Tradelix AI',
   description: 'Tradelix AI TLX Mining Platform',
-  url: 'https://habib7514.github.io/Tradelix-mining/',
+  url: 'https://tlx-mining.github.io/Tradelix-mining/',
   icons: []
 };
 
@@ -200,7 +201,7 @@ async function getWallet() {
     throw new Error('Please connect your wallet first.');
   }
 
-  let accounts = await walletProvider.request({
+  const accounts = await walletProvider.request({
     method: 'eth_accounts'
   });
 
@@ -381,7 +382,7 @@ function handleChainChanged() {
   refreshDashboard();
 }
 
-// Register button events immediately
+// Register connection button
 connectButton?.addEventListener('click', async () => {
   if (busy) return;
 
@@ -489,8 +490,7 @@ claimButton?.addEventListener('click', async () => {
   }
 });
 
-// Initialize Reown as a fallback.
-// A Reown initialization error must not disable the direct wallet connection.
+// Initialize Reown as a fallback
 try {
   const networks = [bsc];
 

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -49,19 +50,16 @@
     }
 
     /* ========================================= */
-    /* ✅ الكود الجديد: الصورة تدور بدون أي شريط ملون */
+    /* الصورة تدور بدون أي شريط ملون */
     /* ========================================= */
     .logo-ring-container {
-      width: 280px; 
+      width: 280px;
       height: 280px;
       margin: 0 auto 15px auto;
       border-radius: 50%;
-      
-      /* الحركة الدورانية فقط */
-      animation: rotateRing 3s linear infinite; /* 3s تعطي دوراناً ناعماً */
+      animation: rotateRing 3s linear infinite;
     }
 
-    /* الصورة تملأ الحاوية بالكامل */
     .logo-ring-container img {
       width: 100%;
       height: 100%;
@@ -74,6 +72,134 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+
+    /* ========================================= */
+    /* REFERRAL SYSTEM - NEW SECTION */
+    /* ========================================= */
+
+    .referral-section {
+      margin: 25px 15px;
+      padding: 22px 18px;
+      text-align: center;
+      background: linear-gradient(145deg, #101d32, #080d18);
+      border: 1px solid rgba(255, 215, 0, 0.35);
+      border-radius: 18px;
+      box-shadow: 0 0 18px rgba(0, 229, 255, 0.08);
+    }
+
+    .referral-image {
+      display: block;
+      width: 100%;
+      max-width: 300px;
+      height: auto;
+      margin: 0 auto 18px;
+      border-radius: 14px;
+      object-fit: contain;
+    }
+
+    .referral-section h2 {
+      color: #ffd700;
+      font-size: 25px;
+      margin-bottom: 10px;
+    }
+
+    .referral-reward {
+      color: #00ff88;
+      font-size: 24px;
+      font-weight: bold;
+      margin: 12px 0;
+      text-shadow: 0 0 10px rgba(0, 255, 136, 0.25);
+    }
+
+    .referral-description {
+      color: #d0d9e8;
+      font-size: 14px;
+      line-height: 1.7;
+      margin-bottom: 18px;
+    }
+
+    .referral-button {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(90deg, #ffd700, #e8a900);
+      color: #080d18;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+
+    .referral-form {
+      display: none;
+      margin-top: 20px;
+      text-align: left;
+    }
+
+    .referral-form label {
+      display: block;
+      color: #e5edf8;
+      font-size: 13px;
+      margin: 14px 0 7px;
+    }
+
+    .referral-form input {
+      width: 100%;
+      padding: 13px;
+      border-radius: 8px;
+      border: 1px solid #35445d;
+      background: #080d18;
+      color: #ffffff;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    .referral-form input:focus {
+      outline: none;
+      border-color: #ffd700;
+    }
+
+    .referral-confirmation {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      color: #d0d9e8;
+      font-size: 13px;
+      line-height: 1.5;
+      margin-top: 16px;
+    }
+
+    .referral-confirmation input {
+      width: auto;
+      margin-top: 3px;
+    }
+
+    .referral-submit {
+      width: 100%;
+      padding: 14px;
+      margin-top: 18px;
+      border: none;
+      border-radius: 10px;
+      background: #00c878;
+      color: #06140e;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .referral-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .referral-message {
+      margin-top: 15px;
+      font-size: 14px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+    }
+
     /* ========================================= */
   </style>
 </head>
@@ -86,7 +212,7 @@
   </header>
 
   <div class="tlx-hero">
-    
+
     <!-- الحاوية الخاصة بالدوران -->
     <div class="logo-ring-container">
         <img
@@ -191,6 +317,125 @@
 
   </main>
 
+  <!-- ========================================= -->
+  <!-- TRADELIX REFERRAL PROGRAM -->
+  <!-- ========================================= -->
+
+  <section class="referral-section">
+
+    <img
+      class="referral-image"
+      src="https://i.ibb.co/mFbzYCBP/file-00000000d83482088d1d2cc4fffd9703.png"
+      alt="TRADELIX Referral Program"
+    >
+
+    <h2>INVITE & EARN</h2>
+
+    <div class="referral-reward">
+      3% TLX REWARD
+    </div>
+
+    <p class="referral-description">
+      Invite new members to TRADELIX MINING and earn 3% of their
+      first TLX purchase amount as a reward.
+
+      <br><br>
+
+      Register the referral before the new member makes a purchase.
+      Rewards are verified and transferred manually.
+    </p>
+
+    <button
+      type="button"
+      class="referral-button"
+      id="showReferralForm"
+    >
+      REGISTER YOUR REFERRAL
+    </button>
+
+    <form
+      class="referral-form"
+      id="referralForm"
+    >
+
+      <label for="referrerWallet">
+        Referrer's Wallet Address (Your Wallet)
+      </label>
+
+      <input
+        type="text"
+        id="referrerWallet"
+        name="Referrer Wallet Address"
+        placeholder="Enter your BSC wallet address"
+        required
+        pattern="0x[a-fA-F0-9]{40}"
+        title="Enter a valid BNB Smart Chain wallet address"
+      >
+
+      <label for="newMemberWallet">
+        New Member Wallet Address
+      </label>
+
+      <input
+        type="text"
+        id="newMemberWallet"
+        name="New Member Wallet Address"
+        placeholder="Enter the invited member's wallet"
+        required
+        pattern="0x[a-fA-F0-9]{40}"
+        title="Enter a valid BNB Smart Chain wallet address"
+      >
+
+      <label for="expectedInvestment">
+        Expected Investment (USDT)
+      </label>
+
+      <input
+        type="number"
+        id="expectedInvestment"
+        name="Expected Investment USDT"
+        min="5"
+        step="0.01"
+        placeholder="Minimum 5 USDT"
+        required
+      >
+
+      <div class="referral-confirmation">
+        <input
+          type="checkbox"
+          id="registeredBeforePurchase"
+          name="Registered Before Purchase"
+          value="Yes"
+          required
+        >
+
+        <span>
+          I confirm that this referral is being registered before
+          the new member makes their first purchase.
+        </span>
+      </div>
+
+      <button
+        type="submit"
+        class="referral-submit"
+        id="submitReferral"
+      >
+        SUBMIT REFERRAL
+      </button>
+
+      <div
+        class="referral-message"
+        id="referralMessage"
+        role="status"
+        aria-live="polite"
+      ></div>
+
+    </form>
+
+  </section>
+
+  <!-- ========================================= -->
+
   <footer>
     TRADELIX AI © 2026
     <br><br>
@@ -198,6 +443,105 @@
   </footer>
 
   <script type="module" src="/src/main.js"></script>
+
+  <!-- REFERRAL FORM SCRIPT -->
+  <script>
+    const showReferralForm = document.getElementById("showReferralForm");
+    const referralForm = document.getElementById("referralForm");
+    const referralMessage = document.getElementById("referralMessage");
+    const submitReferral = document.getElementById("submitReferral");
+
+    showReferralForm.addEventListener("click", function () {
+      const isVisible = referralForm.style.display === "block";
+
+      referralForm.style.display = isVisible ? "none" : "block";
+
+      showReferralForm.textContent = isVisible
+        ? "REGISTER YOUR REFERRAL"
+        : "CLOSE REGISTRATION";
+    });
+
+    referralForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+
+      const referrerWallet = document
+        .getElementById("referrerWallet")
+        .value.trim();
+
+      const newMemberWallet = document
+        .getElementById("newMemberWallet")
+        .value.trim();
+
+      const expectedInvestment = Number(
+        document.getElementById("expectedInvestment").value
+      );
+
+      if (referrerWallet.toLowerCase() === newMemberWallet.toLowerCase()) {
+        referralMessage.style.color = "#ff6b6b";
+        referralMessage.textContent =
+          "The referrer and new member wallets must be different.";
+        return;
+      }
+
+      if (!Number.isFinite(expectedInvestment) || expectedInvestment < 5) {
+        referralMessage.style.color = "#ff6b6b";
+        referralMessage.textContent =
+          "The minimum expected investment is 5 USDT.";
+        return;
+      }
+
+      submitReferral.disabled = true;
+      submitReferral.textContent = "SENDING...";
+      referralMessage.textContent = "";
+
+      const formData = {
+        "_subject": "New TRADELIX MINING Referral Registration",
+        "_template": "table",
+        "Referrer Wallet Address": referrerWallet,
+        "New Member Wallet Address": newMemberWallet,
+        "Expected Investment USDT": expectedInvestment,
+        "Registered Before Purchase": "Yes",
+        "Referral Reward": "3% TLX",
+        "Reward Payment": "Manual verification and transfer"
+      };
+
+      try {
+        const response = await fetch(
+          "https://formsubmit.co/ajax/7moncef77@gmail.com",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify(formData)
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(
+            result.message || "Unable to submit referral."
+          );
+        }
+
+        referralMessage.style.color = "#00ff88";
+        referralMessage.textContent =
+          "Referral submitted successfully! Your registration has been sent for verification. Please wait for confirmation.";
+
+        referralForm.reset();
+
+      } catch (error) {
+        referralMessage.style.color = "#ff6b6b";
+        referralMessage.textContent =
+          "Submission failed. Please check your connection and try again. If this is your first submission, confirm your email activation first.";
+      } finally {
+        submitReferral.disabled = false;
+        submitReferral.textContent = "SUBMIT REFERRAL";
+      }
+    });
+  </script>
 
 </body>
 </html>
